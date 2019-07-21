@@ -6,6 +6,11 @@ from hermes_python.hermes import Hermes
 from hermes_python.ontology import *
 import io
 
+import datetime
+import soco
+from soco.snapshot import Snapshot
+import soco.alarms
+
 CONFIG_INI = "config.ini"
 
 # If this skill is supposed to run on the satellite,
@@ -30,6 +35,18 @@ class Template(object):
 
         # start listening to MQTT
         self.start_blocking()
+
+
+    def get_player(self, name):
+        players = soco.discover()
+        for speaker in players:
+            print("%s (%s)" % (speaker.player_name, speaker.ip_address))
+            if speaker.player_name.lower().replace('ü', 'u') == name:
+                return speaker
+
+    def get_timedelta(self, duration):
+        return datetime.timedelta(days = duration.days, hours = duration.hours, minutes = duration.minutes, seconds = duration.seconds)
+    
         
     # --> Sub callback function, one per intent
     def intent_1_callback(self, hermes, intent_message):
@@ -37,30 +54,59 @@ class Template(object):
         hermes.publish_end_session(intent_message.session_id, "")
         
         # action code goes here...
-        print '[Received] intent: {}'.format(intent_message.intent.intent_name)
+        print('[Received] intent: {}'.format(intent_message.intent.intent_name))
+
+        device = self.get_player(intent_message.site_id)
+        alarm = soco.alarms.Alarm(device)
+        alarm.recurrence = "ONCE"
+        duration_slot = intent_message.slots.duration.first()
+        t = self.get_timedelta(duration_slot)
+        print(t)
+        alarm.start_time = (datetime.datetime.combine(datetime.date.today(), alarm.start_time) + t).time()
+        alarm.save()
 
         # if need to speak the execution result by tts
-        hermes.publish_start_session_notification(intent_message.site_id, "Action1 has been done", "")
+        hermes.publish_start_session_notification(intent_message.site_id, "Teimer gestellt auf {}".format(intent_message.slots.duration[0].raw_value), "")
 
     def intent_2_callback(self, hermes, intent_message):
         # terminate the session first if not continue
         hermes.publish_end_session(intent_message.session_id, "")
 
         # action code goes here...
-        print '[Received] intent: {}'.format(intent_message.intent.intent_name)
+        print('[Received] intent: {}'.format(intent_message.intent.intent_name))
 
         # if need to speak the execution result by tts
-        hermes.publish_start_session_notification(intent_message.site_id, "Action2 has been done", "")
+        hermes.publish_start_session_notification(intent_message.site_id, "Diese Aktion wird momentan noch nicht unterstützt", "")
+
+    def intent_3_callback(self, hermes, intent_message):
+        # terminate the session first if not continue
+        hermes.publish_end_session(intent_message.session_id, "")
+
+        device = self.get_player(intent_message.site_id)
+        alarms = soco.alarms.get_alarms(device)
+        count = 0
+        for alarm in alarms:
+            if alarm.recurrence == "ONCE":
+                alarm.remove()
+                count += 1
+
+        # action code goes here...
+        print('[Received] intent: {}'.format(intent_message.intent.intent_name))
+
+        # if need to speak the execution result by tts
+        hermes.publish_start_session_notification(intent_message.site_id, "{} teimer wurde{} entfernt".format(count, "" if count == 1 else "n"), "")
 
     # More callback function goes here...
 
     # --> Master callback function, triggered everytime an intent is recognized
     def master_intent_callback(self,hermes, intent_message):
         coming_intent = intent_message.intent.intent_name
-        if coming_intent == 'intent_1':
+        if coming_intent == 'mcitar:timerRemember':
             self.intent_1_callback(hermes, intent_message)
-        if coming_intent == 'intent_2':
+        if coming_intent == 'mcitar:timerRemainingTime':
             self.intent_2_callback(hermes, intent_message)
+        if coming_intent == 'mcitar:timerRemove':
+            self.intent_3_callback(hermes, intent_message)
 
         # more callback and if condition goes here...
 

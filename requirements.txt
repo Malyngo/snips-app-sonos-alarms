@@ -2,3 +2,4 @@
 hermes-python>=0.1
 
 # More dependency goes here.. 
+soco>=0.17
