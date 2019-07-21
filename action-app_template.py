@@ -47,6 +47,26 @@ class Template(object):
     def get_timedelta(self, duration):
         return datetime.timedelta(days = duration.days, hours = duration.hours, minutes = duration.minutes, seconds = duration.seconds)
     
+    def remaining_time_str(self, delta):
+        result = ''
+        add_and = ''
+        t = str(delta).split(':')
+
+        if int(float(t[2])) > 0:
+            add_and = ' und '
+            result += "{} Sekunden".format(int(float(t[2])))
+
+        if int(t[1]) > 0:
+            result = "{} Minuten {}{}".format(int(t[1]), add_and, result)
+            if add_and != '':
+                add_and = ', '
+            else:
+                add_and = ' und '
+
+        if int(t[0]) > 0:
+
+            result = "{} Stunden{}{}".format(int(t[0]), add_and, result)
+        return result
         
     # --> Sub callback function, one per intent
     def intent_1_callback(self, hermes, intent_message):
@@ -74,9 +94,23 @@ class Template(object):
 
         # action code goes here...
         print('[Received] intent: {}'.format(intent_message.intent.intent_name))
+        device = self.get_player(intent_message.site_id)
+        alarms = soco.alarms.get_alarms(device)
+        sortedAlarms = sorted({x for x in alarms if x.enabled}, key=lambda a: a.start_time)
+        print(sortedAlarms)
+
+        if len(sortedAlarms) == 0:
+            hermes.publish_start_session_notification(intent_message.site_id, "Es läuft gerade kein Teimer", "")
+            return
+        
+        delta = datetime.datetime.combine(datetime.date.today(), sortedAlarms[0].start_time) - datetime.datetime.now()
+        print(delta)
+
+        remaining = self.remaining_time_str(delta)
+        print(remaining)
 
         # if need to speak the execution result by tts
-        hermes.publish_start_session_notification(intent_message.site_id, "Diese Aktion wird momentan noch nicht unterstützt", "")
+        hermes.publish_start_session_notification(intent_message.site_id, remaining, "")
 
     def intent_3_callback(self, hermes, intent_message):
         # terminate the session first if not continue
